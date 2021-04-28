@@ -1,3 +1,5 @@
+https://github.com/open62541/open62541/issues/4374
+
 # Prerequisites
 
 Install open62541 on target
@@ -27,4 +29,4 @@ All executables are built in `./build` directory in project root (if built using
 Run server: `cd build && ./server`
 Run client: `cd build && ./client` or `cd build && ./client-abrupt-disconnect`
 
- Server and client must be run in parallel, i.e. in separate terminal windows. Run server first. Rerun server after each client run.
+Server and client must be run in parallel, i.e. in separate terminal windows. Run server first. Rerun server after each client run.
