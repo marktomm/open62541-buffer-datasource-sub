@@ -1,0 +1,12 @@
+BasedOnStyle: LLVM
+IndentWidth: 4
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterClass:      true
+  AfterFunction:   true
+PointerAlignment: Left
+AccessModifierOffset: -4
+AlwaysBreakTemplateDeclarations: Yes
+SpaceAfterTemplateKeyword: false
+SpaceBeforeInheritanceColon: false
+
