@@ -7,6 +7,7 @@
 #include <open62541/server.h>
 #include <open62541/server_config_default.h>
 
+static UA_DataValue* externalValue;
 static std::vector<int> eventBuffer(10);
 
 static UA_StatusCode
@@ -36,6 +37,16 @@ readFromBuffer(UA_Server* server, const UA_NodeId* sessionId,
     return UA_STATUSCODE_GOOD;
 }
 
+void VariableReadValueCallback(UA_Server* server, const UA_NodeId* sessionId,
+                               void* sessionContext, const UA_NodeId* nodeId,
+                               void* nodeContext, const UA_NumericRange* range,
+                               const UA_DataValue* dataValue)
+{
+    readFromBuffer(server, sessionId, sessionContext, nodeId, nodeContext, false, range,
+        const_cast<UA_DataValue*>(dataValue));
+}
+
+
 static void addDataSourceVariable(UA_Server* server)
 {
     UA_VariableAttributes attr = UA_VariableAttributes_default;
@@ -51,12 +62,25 @@ static void addDataSourceVariable(UA_Server* server)
     UA_NodeId variableTypeNodeId =
         UA_NODEID_NUMERIC(0, UA_NS0ID_BASEDATAVARIABLETYPE);
 
-    UA_DataSource ds;
-    ds.read = readFromBuffer;
-    ds.write = NULL;
-    UA_Server_addDataSourceVariableNode(
-        server, thisNodeId, parentNodeId, parentReferenceNodeId, currentName,
-        variableTypeNodeId, attr, ds, NULL, NULL);
+    // UA_DataSource ds;
+    // ds.read = readFromBuffer;
+    // ds.write = NULL;
+    // UA_Server_addDataSourceVariableNode(
+    //     server, thisNodeId, parentNodeId, parentReferenceNodeId, currentName,
+    //     variableTypeNodeId, attr, ds, NULL, NULL);
+
+    UA_Server_addVariableNode(server, thisNodeId, parentNodeId, parentReferenceNodeId, currentName,
+        variableTypeNodeId, attr, NULL, NULL);
+
+    UA_ValueCallback cb;
+    cb.onRead = VariableReadValueCallback;
+    cb.onWrite = NULL;
+    UA_Server_setVariableNode_valueCallback(server, thisNodeId, cb);
+
+    // UA_ValueBackend valueBackend;
+    // valueBackend.backendType = UA_VALUEBACKENDTYPE_NONE;
+    // valueBackend.backend.external.value = &externalValue;
+    // UA_Server_setVariableNode_valueBackend(server, thisNodeId, valueBackend);
 }
 
 static volatile UA_Boolean running = true;
@@ -98,6 +122,19 @@ activateSession_default(UA_Server* server, UA_AccessControl* ac,
     return UA_STATUSCODE_GOOD;
 }
 
+static void
+updateVaraible(UA_Server *server, void* /*ctx*/) {
+    UA_Int32 varVal = 0;
+    if(eventBuffer.size()) {
+        varVal = eventBuffer.back();
+        eventBuffer.pop_back();
+    }
+    UA_Variant value;
+    UA_Variant_setScalar(&value, &varVal, &UA_TYPES[UA_TYPES_INT32]);
+    UA_NodeId currentNodeId = UA_NODEID_NUMERIC(1, 1);
+    UA_Server_writeValue(server, currentNodeId, value);
+}
+
 int main(void)
 {
     signal(SIGINT, stopHandler);
@@ -114,10 +151,16 @@ int main(void)
     config->accessControl.activateSession = activateSession_default;
     config->accessControl.closeSession = closeSession_default;
 
+    externalValue = UA_DataValue_new();
+    UA_DataValue_init(externalValue);
+
     addDataSourceVariable(server);
+
+    // UA_Server_addRepeatedCallback(server, updateVaraible, NULL, 2000, NULL);
 
     UA_StatusCode retval = UA_Server_run(server, &running);
 
     UA_Server_delete(server);
+    UA_DataValue_delete(externalValue);
     return retval == UA_STATUSCODE_GOOD ? EXIT_SUCCESS : EXIT_FAILURE;
 }
