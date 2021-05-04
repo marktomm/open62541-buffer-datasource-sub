@@ -6,6 +6,10 @@
 #include <open62541/client_subscriptions.h>
 #include <open62541/plugin/log_stdout.h>
 
+static UA_UInt32 gMonItemId = 0;
+static UA_UInt32 gSubId = 0;
+static UA_Int32 gRecvVal = -2;
+
 static void deleteSubscriptionCallback(UA_Client* client,
                                        UA_UInt32 subscriptionId,
                                        void* subscriptionContext)
@@ -21,6 +25,7 @@ static void handler_sub(UA_Client* client, UA_UInt32 subId, void* subContext,
         UA_Int32 val = *(UA_Int32*)(value->value.data);
         UA_LOG_INFO(UA_Log_Stdout, UA_LOGCATEGORY_USERLAND, "Got value: %d",
                     val);
+        gRecvVal = val;
     }
 }
 
@@ -31,26 +36,8 @@ static void stopHandler(int sign)
     running = false;
 }
 
-int main(void)
-{
-    signal(SIGINT, stopHandler);
-    signal(SIGTERM, stopHandler);
-
-    UA_Client* client = UA_Client_new();
-    UA_ClientConfig* cc = UA_Client_getConfig(client);
-    UA_ClientConfig_setDefault(cc);
-
-    std::stringstream ss;
-    ss << "opc.tcp://localhost:" << 4840;
-    UA_StatusCode status = UA_Client_connect(client, ss.str().c_str());
-    if (status != UA_STATUSCODE_GOOD) {
-        UA_Client_delete(client);
-        UA_LOG_ERROR(UA_Log_Stdout, UA_LOGCATEGORY_USERLAND,
-                     "Unable to connect to server because: %s",
-                     UA_StatusCode_name(status));
-        return 1;
-    }
-    // Create a subscription
+void SetupSubs(UA_Client* client) {
+        // Create a subscription
     UA_CreateSubscriptionRequest request =
         UA_CreateSubscriptionRequest_default();
     UA_CreateSubscriptionResponse response = UA_Client_Subscriptions_create(
@@ -64,7 +51,7 @@ int main(void)
                      "Unable to create subscription because: %s",
                      UA_StatusCode_name(response.responseHeader.serviceResult));
         UA_Client_delete(client);
-        return 1;
+        exit(1);
     }
 
     // Add a MonitoredItem
@@ -88,14 +75,51 @@ int main(void)
                      UA_StatusCode_name(monResponse.statusCode));
 
         UA_Client_delete(client);
+        exit(1);
+    }
+
+    gSubId = response.subscriptionId;
+    gMonItemId = monResponse.monitoredItemId;
+
+}
+
+int main(void)
+{
+    signal(SIGINT, stopHandler);
+    signal(SIGTERM, stopHandler);
+
+    UA_Client* client = UA_Client_new();
+    UA_ClientConfig* cc = UA_Client_getConfig(client);
+    UA_ClientConfig_setDefault(cc);
+
+    std::stringstream ss;
+    ss << "opc.tcp://localhost:" << 4840;
+    UA_StatusCode status = UA_Client_connect(client, ss.str().c_str());
+    if (status != UA_STATUSCODE_GOOD) {
+        UA_Client_delete(client);
+        UA_LOG_ERROR(UA_Log_Stdout, UA_LOGCATEGORY_USERLAND,
+                     "Unable to connect to server because: %s",
+                     UA_StatusCode_name(status));
         return 1;
     }
+
+    SetupSubs(client);
 
 #ifndef ABRUPT_DISCONNECT
     while (running) {
 #endif
         UA_Client_run_iterate(client, 1000);
 #ifndef ABRUPT_DISCONNECT
+
+#ifdef CLIENT_RESUB
+        if(gRecvVal < 6) {
+            UA_LOG_INFO(UA_Log_Stdout, UA_LOGCATEGORY_USERLAND, "recreate sub and monitoredItem");
+            UA_Client_MonitoredItems_deleteSingle(client, gSubId, gMonItemId);
+            UA_Client_Subscriptions_deleteSingle(client, gSubId);
+
+            SetupSubs(client);
+        }
+#endif
     }
 #endif
 

@@ -30,3 +30,11 @@ open62541_client_abrupt = executable('client-abrupt-disconnect',
 	],
 	cpp_args: '-DABRUPT_DISCONNECT'
 )
+
+open62541_client_resub = executable('client-resubscribe', 
+	client_sources, 
+	dependencies: [ 
+		open62541dep
+	],
+	cpp_args: '-DCLIENT_RESUB'
+)
